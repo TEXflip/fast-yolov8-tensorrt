@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 # code taken from: https://github.com/ChuRuaNh0/FastSam_Awsome_TensorRT/blob/main/infer_onnx.py
 # Taken and edited to avoid the huge dependency of ultralytics
 
-# path_cu_nms = Path(__file__).parent / "kernels" / "nms.cu"
-# assert path_cu_nms.exists(), f"Error: {str(path_cu_nms)} not found"
-# with open(path_cu_nms, 'r', encoding="utf-8") as reader:
-#     module = cp.RawModule(code=reader.read())
-# cu_nms_kernel = module.get_function("nms")
+path_cu_nms = Path(__file__).parent / "kernels" / "nms.cu"
+assert path_cu_nms.exists(), f"Error: {str(path_cu_nms)} not found"
+with open(path_cu_nms, 'r', encoding="utf-8") as reader:
+    module = cp.RawModule(code=reader.read())
+cu_nms_kernel = module.get_function("nms_kernel_impl")
 
 
 class Profile(contextlib.ContextDecorator):
@@ -200,7 +200,17 @@ def non_max_suppression(
         
 
         # (46, 4), (46,), 0.7
-        i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        # i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+
+        # my impl
+        asort_scores = cp.argsort(scores, 0)[::-1] # descending order
+        boxes = boxes[asort_scores] # sorted boxes
+        threadsPerBlock = cp.iinfo(cp.ulonglong).bits
+        col_blocks = np.ceil(boxes.shape[0] / threadsPerBlock).astype(int)
+        mask_out = cp.empty((boxes.shape[0],), dtype=cp.ulonglong)
+        cu_nms_kernel((col_blocks, col_blocks), (threadsPerBlock,), 
+                      (boxes.shape[0], iou_thres, boxes, mask_out))
+        breakpoint()
 
         # i = i[:max_det]  # limit detections
         # if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)

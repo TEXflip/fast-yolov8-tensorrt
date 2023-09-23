@@ -8,7 +8,7 @@ from yolov8.yolov8 import YOLOv8trt
 np.bool = bool
 
 if __name__ == "__main__":
-    MODEL_PATH = "./yolov8/models/yolov8n_b8_s640-448.engine"
+    MODEL_PATH = "./yolov8/models/yolov8n.engine"
     # MODEL_PATH = "../models/yolov8n.engine"
     N_ITERATIONS = 10
 

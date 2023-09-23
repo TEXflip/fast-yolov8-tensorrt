@@ -69,13 +69,13 @@ def main(args):
     # network.mark_output(lrelu.get_output(0))
 
     # Write file
-    with builder.build_serialized_network(network, config) as engine, open(f, 'wb') as t:
+    with builder.build_serialized_network(network, config) as serialized_network, open(f, 'wb') as t:
         # Metadata
         meta = json.dumps(metadata)
         t.write(len(meta).to_bytes(4, byteorder='little', signed=True))
         t.write(meta.encode())
         # Model
-        t.write(engine.serialize())
+        t.write(serialized_network)
 
     return f, None
 
