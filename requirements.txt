@@ -1,1 +1,5 @@
 nvidia-tensorrt~=99.0.0
+cupy
+torch
+torchvision
+Pillow

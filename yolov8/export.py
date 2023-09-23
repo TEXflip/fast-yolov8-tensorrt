@@ -14,6 +14,8 @@ metadata = {
 
 def main(args):
     f_onnx = args.file
+    assert Path(f_onnx).exists(), f'ONNX file {f_onnx} not found'
+    assert f_onnx.endswith('.onnx'), f'invalid ONNX file: {f_onnx}'
     f = Path(args.file).with_suffix('.engine')  # TensorRT engine file
     metadata["batch"] = args.batch
     metadata["imgsz"] = args.imgsz
@@ -67,7 +69,7 @@ def main(args):
     # network.mark_output(lrelu.get_output(0))
 
     # Write file
-    with builder.build_engine(network, config) as engine, open(f, 'wb') as t:
+    with builder.build_serialized_network(network, config) as engine, open(f, 'wb') as t:
         # Metadata
         meta = json.dumps(metadata)
         t.write(len(meta).to_bytes(4, byteorder='little', signed=True))

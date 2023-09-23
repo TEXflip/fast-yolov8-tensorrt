@@ -11,19 +11,19 @@ import cupy as cp
 import numpy as np
 import tensorrt as trt
 
-from ultralytics.engine.results import Results
-from ultralytics.utils import DEFAULT_CFG, ROOT, ops
+# from ultralytics.engine.results import Results
+# from ultralytics.utils import DEFAULT_CFG, ROOT, ops
 
 np.bool = bool
 
-from yoloutils import (
+from yolov8.utils import (
     non_max_suppression, 
     scale_boxes, 
     Profile
 )
 
 # Load cuda kernels
-path_curesize = Path(__file__).parent / "cuda_kernels" / "lib_cuResize.cu"
+path_curesize = Path(__file__).parent / "kernels" / "resize.cu"
 assert path_curesize.exists(), f"Error: {str(path_curesize)} not found"
 with open(path_curesize, 'r', encoding="utf-8") as reader:
     module = cp.RawModule(code=reader.read())
@@ -57,6 +57,7 @@ class YOLOv8trt:
         # load model from .engine file
         logger = trt.Logger(trt.Logger.INFO)
         # self.__init_trt_plugins(logger)
+
         with open(model_path, 'rb') as f, trt.Runtime(logger) as runtime:
             meta_len = int.from_bytes(f.read(4), byteorder='little')  # read metadata length
             metadata = json.loads(f.read(meta_len).decode('utf-8'))  # read metadata
@@ -309,20 +310,20 @@ class YOLOv8trt:
             cv2.imwrite(f"post{i}.png", save)
         return preds
     
-    def postprocess_yolo(self, preds, imgsz, orig_imgs):
-        # [8, 84, 5880], [8, 3, 640, 448], list 8 (1080, 810, 3)
-        """Post-processes predictions and returns a list of Results objects."""
-        preds = ops.non_max_suppression(preds,
-                                        self.conf,
-                                        self.iou,
-                                        agnostic=self.agnostic_nms,
-                                        max_det=self.max_det,
-                                        classes=self.classes)
+    # def postprocess_yolo(self, preds, imgsz, orig_imgs):
+    #     # [8, 84, 5880], [8, 3, 640, 448], list 8 (1080, 810, 3)
+    #     """Post-processes predictions and returns a list of Results objects."""
+    #     preds = ops.non_max_suppression(preds,
+    #                                     self.conf,
+    #                                     self.iou,
+    #                                     agnostic=self.agnostic_nms,
+    #                                     max_det=self.max_det,
+    #                                     classes=self.classes)
 
-        results = []
-        for i, pred in enumerate(preds):
-            orig_img = orig_imgs[i]
-            pred[:, :4] = ops.scale_boxes(imgsz, pred[:, :4], orig_img.shape)
+    #     results = []
+    #     for i, pred in enumerate(preds):
+    #         orig_img = orig_imgs[i]
+    #         pred[:, :4] = ops.scale_boxes(imgsz, pred[:, :4], orig_img.shape)
             # results.append(Results(orig_img=orig_img, path="img_path", names=["A"]*40, boxes=pred))
         # for i in range(len(results)):
         #     plot_args = {
@@ -333,37 +334,9 @@ class YOLOv8trt:
         #         'im_gpu': orig_imgs[i]
         #     }
         #     cv2.imwrite(f"post{i}.png", results[i].plot(**plot_args))
-        return results
-
-if __name__ == "__main__":
-    MODEL_PATH = "./models/yolov8n_b8_s640-448.engine"
-    # MODEL_PATH = "../models/yolov8n.engine"
-    N_ITERATIONS = 10
-
-    model = YoloTensorRT(MODEL_PATH)
-    BATCH_SIZE = model.batch_size
-
-    image = cv2.imread('./data/bus.jpg')
-    # image_batch = np.array([image] * BATCH_SIZE)
-    image_batch = cp.array([image] * BATCH_SIZE)
+        # return results
 
 
-    model.warmup()
-
-    start_time = time.time()
-    for _ in range(N_ITERATIONS):
-        pred = model.predict(image_batch)
-    tot_time = (time.time() - start_time) / (N_ITERATIONS * BATCH_SIZE)
-
-    for prof in model.profilers:
-        prof.t /= N_ITERATIONS * BATCH_SIZE
-
-    print('')
-    print('')
-    print(f"preprocess time per image: {round(model.profilers[0].t * 1000, 2)} ms ({round(1/model.profilers[0].t, 2)} fps)")
-    print(f"inference time per image: {round(model.profilers[1].t * 1000, 2)} ms ({round(1/model.profilers[1].t, 2)} fps)")
-    print(f"postprocess time per image: {round(model.profilers[2].t * 1000, 2)} ms ({round(1/model.profilers[2].t, 2)} fps)")
-    print(f"tot time per image: {round(tot_time * 1000, 2)} ms ({round(1/tot_time, 2)} fps)")
 
     # print(pred[0].shape)
     # print(pred[1].shape)
