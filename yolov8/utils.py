@@ -197,20 +197,35 @@ def non_max_suppression(
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
 
-        
+        boxes_t = torch.as_tensor(boxes, device='cuda:0')
+        scores_t = torch.as_tensor(scores, device='cuda:0')
 
         # (46, 4), (46,), 0.7
-        # i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        i_t = torchvision.ops.nms(boxes_t, scores_t, iou_thres)  # NMS
 
         # my impl
         asort_scores = cp.argsort(scores, 0)[::-1] # descending order
         boxes = boxes[asort_scores] # sorted boxes
         threadsPerBlock = cp.iinfo(cp.ulonglong).bits
-        col_blocks = np.ceil(boxes.shape[0] / threadsPerBlock).astype(int)
-        mask_out = cp.empty((boxes.shape[0],), dtype=cp.ulonglong)
+        col_blocks = np.ceil(boxes.shape[0] / threadsPerBlock).astype(np.uint64).item()
+        mask_out = cp.zeros((boxes.shape[0] * col_blocks,), dtype=cp.uint64)
         cu_nms_kernel((col_blocks, col_blocks), (threadsPerBlock,), 
-                      (boxes.shape[0], iou_thres, boxes, mask_out))
-        breakpoint()
+                      (boxes.shape[0], iou_thres, boxes, mask_out), 
+                      shared_mem = threadsPerBlock * 4)
+        remv = cp.zeros((col_blocks,), cp.uint64)
+        keep_out = cp.empty((boxes.shape[0],), dtype=cp.int64)
+        num_to_keep = 0
+        for i in range(boxes.shape[0]):
+            nblock = i / threadsPerBlock
+            inblock = i % threadsPerBlock
+            if not (remv[nblock] & (1 << inblock)):
+                num_to_keep += 1
+                keep_out[num_to_keep] = i
+                pr = mask_out + i * col_blocks
+                for j in cp.arange(nblock, col_blocks, dtype=cp.uint64):
+                    remv[j] |= pr[j]
+        print(i_t)
+        print(keep_out[:num_to_keep].view(cp.float32))
 
         # i = i[:max_det]  # limit detections
         # if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
